@@ -28,3 +28,7 @@ class CarbonMarket(Producer,Government):
 	def __init__(self):
 		pass
 
+
+class ElectricityMarket(Producer):
+	def __init__(self):
+		pass

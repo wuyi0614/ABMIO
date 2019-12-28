@@ -1,2 +1,9 @@
-# ABMIO
-Agent-based Model plus I-O Model
+# ABM-IO
+`Agent-based Model & Input-Output Model Simulator`  :smile:
+
+### TODO 
+
+- Agents
+- Markets
+- Sync
+- Simulation utils

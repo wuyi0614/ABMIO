@@ -3,23 +3,17 @@
 @Author: Juli
 @CreatDate: 2019-12-09
 """
-
 import os
-from .Agent import *
-from .Market import *
 
+import sys
+try: module_path = os.path.abspath(os.path.dirname(__file__))
+except: module_path = "/Users/mario/Desktop/"
+sys.path.append(module_path)
 
-# vectorise : firms = [100,110,180,99,50]
-# object: firms = [Agent.firm.id==1,Agent.firm.id==2]
+from ABM.parameter import Shelve
 
-def run(firm_num=1000):
-	io = IO(io_path)
-	# 生成主体:
-	agents = []
-	for i in range(firm_num):
-		# 正态化产值:
-		output = normal(io.gross_output)[i]
-
-		agents += [Producer(id=i,output=output)]
-
+import logging
+logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
