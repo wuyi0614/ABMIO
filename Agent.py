@@ -5,17 +5,16 @@
 """
 
 import os
+import re
 import sys
-import pandas as pd
 import numpy as np
 
-import sys
-try: module_path = os.path.abspath(os.path.dirname(__file__))
-except: module_path = "/Users/mario/Desktop/carbon_market_code/"
+try: module_path = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
+except: module_path = "/Users/mario/Document/OneDrive/GitHub/"
 sys.path.append(module_path)
 
-#from ABM.Parameter import Shelve
-#from ABM.CES import CESModule
+from ABMIO.parameter import Shelve
+# from ABMIO.ces_model import CES
 
 import logging
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s")
@@ -30,118 +29,183 @@ class AgentError(Exception):
 
 __ALL__ = ["Producer","Government","Consumer"]
 
-
-class Production(object):
-	"""
-	生产模块: 将定制后的厂商传入本模块，经过生产条件(模块)的加工后，更新厂商的经济属性
-	Functions:
-		- _recipe: 配置不同行业的厂商
-		- produce: 生产函数，根据条件更新企业的产出: `.producer_output`
-	"""
+class BaseAgent(object):
 	def __init__(self):
-		pass
+		""" BaseClass for all-type Agents """
+		self.actor = type(self).__name__
+		self._actor = type(self).__name__.lower()
+		# natural selector: interesting gadget
+		self.scaler = lambda x: x if x>0 else 0
 
-	def _recipe(self,*args):
-		""" 菜单: 放置厂商至生产环节 """
-		if args:
-			self.production_size = len(args)
-			self.production_agents = {each.producer_sector:each for each in args}
-			return True
+
+	def lineplot(self, *args):
+		"""
+		基类方法: 绘制折线图 (based on size of agents)
+		Parameters:
+			- *args: variables are to be displayed
+		"""
+		pass # //TODO
+
+	def boxplot(self, *args):
+		"""
+		基类方法: 绘制折线图 (based on size of agents)
+		Parameters:
+			- *args: variables are to be displayed
+		"""
+		pass # //TODO
+
+
+	def excel():
+		"""
+		基类方法: 输出为excel文件 (.xls)
+		Parameters:
+			- *args: variables output
+		"""
+		pass # //TODO
+
+
+	def jsonify():
+		"""
+		基类方法: 输出为json文件 (.txt)
+		Parameters:
+			- *args: variables output
+		"""
+		pass # //TODO		
+
+
+	def calibrate(self, syntax):
+		"""
+		基类方法: 经济变量校准，传入表达式句法, 示例: 
+		syntax = "consumer_econ_saving_rates=consumer_econ_savings/consumer_econ_incomes"
+		ie. `储蓄率表达式计算`
+		"""
+		# search variables:
+		args_expr = re.compile("(\w+econ_\w+)")
+		args = args_expr.findall(syntax)
+		# update variables:
+		expr_args = ["{}.{}".format(self._actor, arg) for arg in args]
+		_syntax = args_expr.sub("{}", syntax)
+		syntax = _syntax.format(*expr_args)
+		# eval syntax into an expression:
+		expression = syntax.split("=")[-1]
+
+		if hasattr(self, args[0]):
+			self.__setattr__(args[0], eval(expression))
+			logger.info("[{} Calibrate] carlibrate [{}]".format(self.actor, args[0]))
 		else:
-			logger.error("empty producer queue, specify *args by producers ")
+			logger.error("[{} Calibrate] failure calibration [{}] missing".format(self.actor, args[0]))
 			return False
 
 
-	def produce(self, *args, **kwargs):
-		"""
-		生产决策: 根据给定的生产决策函数 `_function` 更新厂商的经济变量 `args`, `kwargs` 给出不同产业部门的生产决策函数
-		Parameter:
-			- _function: produce function with arguments == args
-			- *args: economic variables
-			- **kwargs: production function for different sectors, if specify {"all":_function}, apply same function
-		"""
-		if kwargs: pass
-		else:
-			def _default(output, costs):
-				output = np.random.normal(np.mean(output) * 1.1, np.mean(output)//10, len(output))
-				costs = np.random.normal(np.mean(costs) * 1.1, np.mean(costs)//10, len(costs))
-				return [output, costs]
-			kwargs = {"all":_default}
-			
-		if args: pass
-		else: args = ["producer_output","producer_econ_costs"]
-		# update production variables:
-		for sector, function in kwargs.items():
-			if sector == "all":
-				for psector, producer in self.production_agents.items():
-					params = [producer.__getattribute__(key) for key in args]
-					# call production function:
-					print(params)
-					changes = function(*params)
-					print(changes)
-					# update producer.*variables:
-					[producer.__setattr__(key, value) for key, value in zip(args, changes)]
-					# update producers in production_agents:
-					self.production_agents[psector] = producer
-			else: # heterogenous functions for different sectors:
-				producer = self.production_agents[sector]
-				params = [producer.__getattribute__(key) for key in args]
-				changes = function(*params)
-				[producer.__setattr__(key, value) for key, value in zip(params, changes)]
-				self.production_agents[sector] = producer
-		# finish updating producers:
-		logger.info("[Production Produce] all producers end producing with [{}] production functions ".format(len(kwargs)))
-		return self
+	def summary(self):
+		""" 基类方法: 经济变量概述, 返回经济变量的均值统计 """
+		_metadata = ["{:<40}|{:>19.2f}".format(key, np.mean(self.__getattribute__(key))) for key in dir(self) if "econ" in key.split("_")]
+		_info = """
+------------------------------------------------------------
+{} Metadata (method: Mean, unit: 10^4 Yuan)
+------------------------------------------------------------
+{}
+------------------------------------------------------------
+""".format(self.actor, "\n".join(_metadata))
+		print(_info)
+		return 
 
-
-	def inputDecision(self,iteration):
+	def setting_variables(self, **kwargs):
 		"""
-		if interval==0:
-			if self.raw_output:
+		基类方法: 调整经济变量
+		Parameters:
+			- **kwargs: input all variables named as `<agent>_econ_<var>`
+		"""
+		# iterative updating economic variables:
+		for key, value in kwargs.items():
+			if key.startswith("{}_econ".format(self._actor)):
 				pass
-		else:
-			she = Shelve("result","./")
-			self.raw_output = she.query("gross_output")[interval]
-			
-		for s in range(self.sector_number):
-			self.gross_mat[:,s] = np.random.normal(self.raw_output[s]/float(self.size),float(10**6)/float(self.size),self.size)
-			inter_matrix = [mixedPrice(alpha[s],delta[s],prices,m,lamb[s],each) each for each in gross_mat[:,s]]
-		
-		if intervall == 0:
-			# 写入shelve:
-			she = Shelve("result","./")
-			she.save("gross_mat",:gross_mat)
-		else: # 从这里开始是第t+1期:
-			she.update("gross_mat",gross_mat)"""
+			elif "econ" in key.split("_"):
+				key = "{}_{}".format(self._actor, key)
 
-class Producer(object):
+			self.__setattr__(key, value)
+			logger.info("[{}] set variable: [{}]".format(self.actor, key))
+
+
+	def preload(self, shelve_object:object, iteration, label=""):
+		"""
+		基类方法: 从现有的数据库中加载经济数据
+		Parameters:
+			- shelve_object: Shelve object with nodes' data
+			- iteration: the node for Shelve database's storage
+			- label: label for Agent's classification
+		"""
+		node = "node{}".format(iteration)
+		if label: load_label = "{}_{}".format(self.actor, label)
+		else: load_label = self.actor
+
+		if type(shelve_object).__name__ == "Shelve":
+			result = shelve_object.query(node)
+			if result:
+				_load, preload_data = [], result[load_label]
+				for key, value in preload_data.items():
+						self.__setattr__(key, value)
+						_load += [key]
+				logger.info("[{} Preload] load [{}] variables from database [{}] ".format(self.actor, len(_load), shelve_object.name))
+			else:
+				logger.warning("[{} Preload] can't find node [{}] in database [{}] ".format(self.actor, node, shelve_object.name))
+		else:
+			logger.error("[{} Preload] invalid Shelve Object ".format(self.actor))
+			return False
+
+
+	def sync(self, shelve_object:object, iteration, label=""):        
+		"""
+		BaseMethod: Sync agent data with Shelve database
+		Parameter:
+			- shelve_object: inherit from `Shelve`
+			- iteration: the node for Shelve database's storage
+			- label: label for Agent's classification
+		"""
+		if label: sync_label = "{}_{}".format(self.actor, label)
+		else: sync_label = self.actor
+
+		if type(shelve_object).__name__ == "Shelve":
+			object_value = {key:self.__getattribute__(key) for key in dir(self) if key.startswith("{}_econ".format(self._actor))}
+			sync_node = "node{}".format(iteration)
+
+			# define <object name> and sync {<object name>/label: object_value}
+			sync_value = {sync_label : object_value}
+			shelve_object.update(hash_code=sync_node, **sync_value)
+			logger.info("[{} Sync] sync [{}] variables into [{}] at node [{}] ".format(sync_label,len(sync_value), shelve_object.name, sync_node))
+			return True
+		else:
+			logger.error("[{} Sync] invalid Shelve Object ".format(sync_label))
+			return False
+
+
+class Producer(BaseAgent):
 	"""
 	这是生产商模块: 支持生成某个特定行业的n个企业
 	"""
 	def __init__(self,**kwargs):
+		super(Producer, self).__init__()
 		# 赋值厂商的基本情况:
-		self.producer_size = kwargs.get("producer_size", 1000)
-		self.producer_sector = kwargs.get("sector", "001")  # 所属行业的编码, 字符串
+		self.producer_size = kwargs.get("size", 1000)
+		self.producer_sector = kwargs.get("sector", "all")  # 所属行业的编码, 字符串
 		self.producers = ["p{}s{}".format(str(index),self.producer_sector) for index in range(self.producer_size)]
 		# 复制 producers 的size
-		self.producer_input = np.zeros(self.producer_size)
-		self.producer_output = np.zeros(self.producer_size)
+		self.producer_econ_input = np.zeros(self.producer_size)
+		self.producer_econ_output = np.zeros(self.producer_size)
 		# 根据厂商的数量，生成经济条件，此处约定: 所有的经济参数 -- 也就是要计算经济值的变量，应当以 `econ` 命名:
 		self.producer_econ_capitals = kwargs.get("producer_econ_capitals", np.random.normal(1000,50,self.producer_size))
 		self.producer_econ_costs = kwargs.get("producer_econ_costs", np.random.normal(200,20,self.producer_size))
 		self.producer_econ_sales = kwargs.get("producer_econ_sales", np.random.normal(300,30,self.producer_size))
 		self.producer_econ_profits = kwargs.get("producer_econ_profits", self.producer_econ_sales - self.producer_econ_costs)
-		self.producer_econ_techologies = kwargs.get("producer_econ_techologies", np.random.normal(10,2,self.producer_size))
+		self.producer_econ_technologies = kwargs.get("producer_econ_technologies", np.random.normal(10,2,self.producer_size))
+		self.producer_econ_tax_rates = kwargs.get("producer_econ_tax_rates", np.random.random(self.producer_size))
+		self.producer_econ_taxes = kwargs.get("producer_econ_taxes", self.producer_econ_tax_rates * self.producer_econ_sales)
 		# 如果有其他的经济变量，批量在此处添加:
 		for key, value in kwargs.items():
 			if key not in dir(self) and key.startswith("producer_econ"):
 				self.__setattr__(key, value)
-		# 生成厂商的元信息:
-		metadata = ["producer_input", "producer_output"]
-		metadata += [key for key in dir(self) if key.startswith("producer_econ")]
-		self.metadata = metadata
 		# // end
-		logger.info("[Producer Initialise] generate [{}] producers in sector [{}] ".format(self.producer_size, self.producer_sector))
+		logger.info("[{} Initialise] generate [{}] agents in sector [{}] ".format(self.actor, self.producer_size, self.producer_sector))
 
 
 	def _setting_output(self, producer_output_dispatch:object):
@@ -152,11 +216,11 @@ class Producer(object):
 		"""
 		# call dispatch function:
 		_dispatch = producer_output_dispatch()
-		if _dispatch.shape == self.producer_output.shape:
-			self.producer_output = _dispatch
+		if _dispatch.shape == self.producer_econ_output.shape:
+			self.producer_econ_output = _dispatch
 			return True
 		else:
-			logger.error("invalid producer_output_dispatch(), expect a `np.ndarray ({})`, but get ({}) ".format(str(self.producer_output),type(_dispatch)))
+			logger.error("invalid producer_output_dispatch(), expect a `np.ndarray ({})`, but get ({}) ".format(str(self.producer_econ_output),type(_dispatch)))
 			return False
 
 
@@ -164,82 +228,99 @@ class Producer(object):
 		"""
 		Set .producer_input, follow the size of .producer_size
 		Parameter:
-			- producer_input_dispatch: a function, return `.producer_input` dimension array
+			- producer_input_dispatch: a function, return `.producer_econ_input` dimension array
 		"""
 		_dispatch = producer_input_dispath()
-		if _dispatch.shape == self.producer_input.shape:
-			self.producer_input = _dispatch
+		if _dispatch.shape == self.producer_econ_input.shape:
+			self.producer_econ_input = _dispatch
 			return True
 		else:
-			logger.error("invalid producer_input_dispath(), expect a `np.ndarray ({})`, but get ({}) ".format(str(self.producer_input),type(_dispatch)))
+			logger.error("invalid producer_input_dispath(), expect a `np.ndarray ({})`, but get ({}) ".format(str(self.producer_econ_input),type(_dispatch)))
 			return False
 
 
-	def _setting_econ_variables(self, **kwargs):
-		# iterative updating economic variables:
-		for key, value in kwargs.items():
-			if key in dir(self) and key.startswith("producer_econ"):
-				self.__setattr__(key, value)
-
+	def setting_variables(self, **kwargs):
+		super(Producer, self).setting_variables(**kwargs)
 
 	def summary(self):
-		_metadata = "\n".join(["{}:\t{}".format(key, np.mean(self.__getattribute__(key))) for key in self.metadata])
-		_info = """
-------------------------------------------------------------
-Producer Metadata (Mean)
-------------------------------------------------------------
-{}
-------------------------------------------------------------
-""".format(_metadata)
-		print(_info)
-		return 
+		super(Producer, self).summary()
+
+	def preload(self, shelve_object:object, iteration, label):
+		super(Producer, self).preload(shelve_object, iteration, label)
+
+	def sync(self,shelve_object:object, iteration, label):
+		super(Producer, self).sync(shelve_object, iteration, label)
+
+		
+
+class Government(BaseAgent):
+	def __init__(self, **kwargs):
+		super(Government, self).__init__()
+		# basis of agent
+		self.government_size = 1
+		self.government = kwargs.get("government", "all")
+		# assign the basic account of government:
+		self.government_econ_taxes = kwargs.get("government_econ_tax", np.random.normal(100, 10, self.government_size))
+		self.government_econ_tax_rates = kwargs.get("government_econ_tax_rate", np.random.random())
+		self.government_econ_capitals = kwargs.get("government_econ_capital", np.random.normal(500, 10, self.government_size))
+		self.government_econ_subsidies = kwargs.get("government_econ_subsidy", np.random.normal(-200, 20, self.government_size)) # subsidy is normally negative value
+		self.government_econ_penalties = kwargs.get("government_econ_subsidy", np.random.normal(200, 20, self.government_size))
+		self.government_econ_penalty_rates = kwargs.get("government_econ_tax_rate", np.random.random())
+		# if any other kwarg:
+		for key, value in kwargs.items():
+			if key.startswith("government_econ"):
+				pass
+			elif "econ" in key.split("_"):
+				key = "{}_{}".format(self._actor, key)
+			self.__setattr__(key, value)
+		# //end
+		logger.info("[{} Initialise] generate [{}] agents".format(self.actor, self.government))
+
+	def setting_variables(self, **kwargs):
+		super(Government, self).setting_variables(**kwargs)
+
+	def summary(self):
+		super(Government, self).summary()
+
+	def preload(self, shelve_object:object, iteration, label):
+		super(Producer, self).preload(shelve_object, iteration, label)
+
+	def sync(self,shelve_object:object, iteration, label):
+		super(Producer, self).sync(shelve_object, iteration, label)
 
 
-	def sync(self,shelve_object:object, iteration):
-		"""
-		Sync Producer data with Shelve database
-		Parameter:
-			- shelve_object: inherit from `Shelve`
-			- iteration: the node for Shelve database's storage
-		"""
-		if isinstance(shelve_object, Shelve):
-			sync_value = {key:self.__getattribute__(key) for key in self.metadata}
-			shelve_object.save(hash_code=iteration, **sync_value)
-			logger.info("[Producer Sync] sync [{}] variables into [{}] ".format(len(sync_value), shelve_object.name))
-			return True
-		else:
-			logger.error("[Producer Sync] invalid Shelve Object ")
-			return False
+class Consumer(BaseAgent):
+	"""	Consumer Agent """
+	def __init__(self, *kargs, **kwargs):
+		super(Consumer, self).__init__()
+		# basis of agents:
+		self.consumer_size = kwargs.get("size", 1000)
+		# following are the economic variables:
+		self.consumer_econ_incomes = kwargs.get("consumer_econ_incomes", np.random.normal(200, 20, self.consumer_size))
+		self.consumer_econ_consumptions = kwargs.get("consumer_econ_consumptions", np.random.normal(100, 30, self.consumer_size))
+		self.consumer_econ_tax_rates = kwargs.get("consumer_econ_tax_rates", np.random.random(self.consumer_size))
+		self.consumer_econ_taxes = kwargs.get("consumer_econ_taxes", self.consumer_econ_incomes * self.consumer_econ_tax_rates)
+		# verify if saving rate is negative or positive:	
+		self.consumer_econ_savings = kwargs.get("consumer_econ_savings", self.consumer_econ_incomes - self.consumer_econ_consumptions - self.consumer_econ_taxes)
+		self.consumer_econ_savings = np.array([self.scaler(each) for each in self.consumer_econ_savings])
+		self.consumer_econ_saving_rates = kwargs.get("consumer_econ_saving_rates", self.consumer_econ_savings / self.consumer_econ_incomes)
+
+		# update variables if variables are assigned:
+		for key, value in kwargs.items():
+			if key not in dir(self) and key.startswith("consumer_econ"):
+				self.__setattr__(key, value)
+		# // end
+		logger.info("[{} Initialise] generate [{}] agents ".format(self.actor, self.consumer_size))		
 
 
-class Government(object):
-	def __init__(self):
-		pass
+	def setting_variables(self, **kwargs):
+		super(Consumer, self).setting_variables(**kwargs)
 
-	def fine(self,obj): # obj: Consumer, Producer
-		pass
+	def summary(self):
+		super(Consumer, self).summary()
 
+	def preload(self, shelve_object:object, iteration, label):
+		super(Producer, self).preload(shelve_object, iteration, label)
 
-class Consumer(object):
-	"""
-	Consumer Agent: including the following functions:
-	.saving: ..., interest rate
-	.invest: ..., amount
-	.consume: ..., product,price,volume
-	Parameters:
-	:income: income of consumer
-	:ir: interest rate
-	"""
-	def __init__(self,uid,*kargs,**kwargs):
-		self.id = uid
-
-	def saving(self,ir,percentage):
-		print("[Consumer %s] save %s of income at rate %s"%(self.id,percentage,ir))
-
-	def invest(self):
-		pass
-
-	def consume(self):
-		pass	
-
-
+	def sync(self,shelve_object:object, iteration, label):
+		super(Producer, self).sync(shelve_object, iteration, label)

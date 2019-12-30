@@ -4,12 +4,11 @@
 @CreatDate: 2019-12-26
 """
 import pandas as pd
-from ABM.Parameter import Shelve
 
 PATH = '/Users/juli/Desktop/Graduation_Project/carbon_trade/codes/ces_data/'
 Number_sec = 139
 
-class CESModule(object):
+class CES(object):
 	def __init__(self,shelve_path,shelve_name):
 		self.she = Shelve(shelve_name,shelve_path)
 	

@@ -44,6 +44,7 @@ import os
 import re
 import pandas as pd
 from itertools import chain
+import hashlib
 
 import logging
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s")
@@ -64,7 +65,7 @@ class Shelve(object):
     
 
     def open(self):
-        self.db = shelve.open("{}/{}".format(self.path,self.name))
+        self.db = shelve.open("{}/{}".format(self.path,self.name), writeback=True)
         return self
 
 
@@ -74,15 +75,20 @@ class Shelve(object):
 
     
     def save(self,hash_code,**kwargs):
-        db = shelve.open("{}/{}".format(self.path,self.name))
+        """ 在模型的场景中，shelve的结构是:
+        1. {"node1":{"<Agent>":{"agent_econ_var1":...,"agent_econ_var2":...}}}
+        2. {"node1":{"<Agent_label>":{"agent_econ_var1":...,"agent_econ_var2":...}}}
+        其中`node1` 是iteration, `label` 是根据同一类主体不同标签的分类符
+        """
+        she = self.open()
         try:
             if kwargs:
-                db[hash_code] = {k:v for k,v in kwargs.items()}
+                she.db[hash_code] = {k:v for k,v in kwargs.items()}
                 logger.info("[Shelve save] save [{}] at [{}] ".format(hash_code,self.name))
         except Exception as e:
             logger.error("[Shelve save] failed: [%s] "%e)
         finally:
-            db.close()
+            she.close()
         
     
     def load(self,path=None):
@@ -102,69 +108,73 @@ class Shelve(object):
             return False
             
     
-    def delete(self,hash_code:str="",q:str="") -> bool:
+    def delete(self,hash_code:str="",label:str=""):
         if hash_code:
-            db = shelve.open("{}/{}".format(self.path,self.name))
-            if hash_code in db: 
-                db.pop(hash_code)
+            if self.query(hash_code):
+                she = self.open()
+                she.db.pop(hash_code)
+                she.close()
                 return True
             else: 
                 return False
-            db.close()
-        elif q: # econ_variable
-            db = shelve.open("{}/{}".format(self.path,self.name))
-            for key, value in db.items(): # dicts
-                if q in value:
-                    db[key].pop(q)
-                    db.close()
+        elif label: # econ_variable
+            mapping = self.load()
+            she = self.open()
+            if label in mapping.keys():
+                she.db.pop(label)
+                she.close()
+                return True
+            
+            for node, value in mapping.items(): # dicts
+                if label in value:
+                    she.db[node].pop(label)
+                    she.close()
                     return True
                 else:
-                    next
-            db.close()
+                    for key, objects in value.items():
+                        if label in objects:
+                            she.db[node][key].pop(label)
+                            she.close()
+                            return True
+            she.close()
+            return False
         else:
             return False
 
     
-    
-    def query(self,hash_code:str="",q:str="") -> dict:
+    def query(self,hash_code:str):
         """ Query objects
-        :hash_code: query hash value
-        :q: query phrase, give token or string to search
+        :hash_code: exact hash_code match
+        :q: query phrase, match variables under hash_code
         """
-        mapping = self.load()
-        if mapping:
-            if hash_code:
-                return mapping[hash_code]
-            elif q:
-                submapping = mapping.values()
-                for each in submapping: # dicts
-                    if q in each:
-                        return each
-                    else:
-                        next
-                return False
+        she = self.open()
+        if hash_code in she.db:
+            result = she.db[hash_code]
         else:
-            return False
-    
-    
-    def update(self,hash_code,obj):
-        """ Object update
-        :hash_code: query hash value
-        :**kwargs: example: <value_type> = object
-        """
-        old = self.load()
-        if hash_code in old:
-            match = old[hash_code]
-            if not isinstance(match,list):
-            	match = [match]
+            result = {}
+        she.close()
+        return result
 
-            if not isinstance(obj,list):
-            	obj = [obj]
-            
-            match += obj
-            # end
-            self.save(hash_code,match)
-            logger.info("[Shelve update] update 1 record: %s"%hash_code)
-            return True
-        else: # if hash_code not in mapping
-            return False
+    
+    def update(self,hash_code,**kwargs):
+        """ Object update
+        :hash_code: query e.g. `node1` 
+        :**kwargs: **{"<symbol>": {"var1":obj, "var2":obj}}
+        """
+        result = self.query(hash_code)
+        if result:
+            _update = []
+            for key, value in kwargs.items(): # here, key is the label
+                if key in result:
+                    # only suport overwriting not appending
+                    result[key] = value
+                    _update += [key]
+                else:
+                    next
+            self.save(hash_code, **result)
+            logger.info("[Shelve update] update [{}] at [{}] ".format(", ".join(_update), self.name))
+        else:
+            self.save(hash_code, **kwargs)
+            logger.info("[Shelve save] create [{}] at [{}] ".format(hash_code, self.name))
+        return True
+        

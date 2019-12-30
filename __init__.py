@@ -10,7 +10,7 @@ try: module_path = os.path.abspath(os.path.dirname(__file__))
 except: module_path = "/Users/mario/Desktop/"
 sys.path.append(module_path)
 
-from ABM.parameter import Shelve
+#from ABMIO.parameter import Shelve
 
 import logging
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s")
