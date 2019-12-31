@@ -22,16 +22,13 @@ logger.setLevel(logging.INFO)
 class IOTableError(Exception):
 	pass
 
-
 class IOModule(object):
 	""" IO object: only accepts pandas.DataFrame object """
-	def __init__(self,shelve_path,shelve_name):
+	def __init__(self):
 		self.io = pd.DataFrame()
-		self.shelve_path = shelve_path
-		self.shelve_name = shelve_name
-		self.she = Shelve(path=self.shelve_path,name=self.shelve_name)
 		self.io_metadata = []  # rowname, colnames
 		# //todo
+		logger.info("[{} Initialise] model starts... ".format())
 
 
 	def _set_tablenames(self,**kwargs):
@@ -40,7 +37,11 @@ class IOModule(object):
 		if self.io.emtpy:
 			raise IOTableError("IO table missing, call .getIO() ")
 		else:
-			pass
+			try:
+				self.io.index = rownames
+				self.io.columns = colnames
+			except:
+				logger.error([])
 
 
 	@staticmethod

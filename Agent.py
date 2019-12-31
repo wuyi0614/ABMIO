@@ -80,7 +80,7 @@ class BaseAgent(object):
 		ie. `储蓄率表达式计算`
 		"""
 		# search variables:
-		args_expr = re.compile("(\w+econ_\w+)")
+		args_expr = re.compile("(\w+_*\w+)")
 		args = args_expr.findall(syntax)
 		# update variables:
 		expr_args = ["{}.{}".format(self._actor, arg) for arg in args]
@@ -251,7 +251,6 @@ class Producer(BaseAgent):
 	def sync(self,shelve_object:object, iteration, label):
 		super(Producer, self).sync(shelve_object, iteration, label)
 
-		
 
 class Government(BaseAgent):
 	def __init__(self, **kwargs):

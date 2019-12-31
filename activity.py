@@ -27,7 +27,7 @@ class BaseActivity(object):
 		self.actor = type(self).__name__
 		self._actor = type(self).__name__.lower()
 		self.scaler = lambda x: x if x>0 else 0	
-
+		logger.info("[{} Initialise] activity starts... ".format(self.actor))
 
 	def recipe(self, *args):
 		"""
@@ -49,7 +49,7 @@ class BaseActivity(object):
 
 	def function(self, *args, **kwargs):
 		"""
-		设定变量: _variables 和函数: _function:
+		基类方法: 设置经济变量: _variables 和函数: _function:
 		Parameters:
 			- *args: variables used in function decisions
 			- **kwargs: {"all": function}, specify all the same function to agents, if length of kwargs matches agents, apply them.
