@@ -8,12 +8,11 @@ import os
 import re
 import sys
 import numpy as np
-
+import math
 try: module_path = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
 except: module_path = "/Users/mario/Document/OneDrive/GitHub/"
 sys.path.append(module_path)
 
-from ABMIO.parameter import Shelve
 # from ABMIO.ces_model import CES
 
 import logging
@@ -36,7 +35,8 @@ class BaseAgent(object):
 		self._actor = type(self).__name__.lower()
 		# natural selector: interesting gadget
 		self.scaler = lambda x: x if x>0 else 0
-
+        # use (negativ, postivve operator) to aviod `math.OverflowError`
+		self.logistic = lambda x: 1/(1+math.exp(-x)) if x>0 else 1 - 1/(1+math.exp(x))
 
 	def lineplot(self, *args):
 		"""
@@ -55,7 +55,7 @@ class BaseAgent(object):
 		pass # //TODO
 
 
-	def excel():
+	def excel(self):
 		"""
 		基类方法: 输出为excel文件 (.xls)
 		Parameters:
@@ -64,7 +64,7 @@ class BaseAgent(object):
 		pass # //TODO
 
 
-	def jsonify():
+	def jsonify(self):
 		"""
 		基类方法: 输出为json文件 (.txt)
 		Parameters:
@@ -72,6 +72,23 @@ class BaseAgent(object):
 		"""
 		pass # //TODO		
 
+	def ab_scaler(self, lower, upper, vector):
+		if not isinstance(vector, list): vector = [vector]
+		k = (upper - lower) / (max(vector) - min(vector))
+		vector = [(lower + k * (x - min(vector))) for x in vector]
+		return np.array(vector)
+
+	def weighted_random(self, lower, upper, weight):
+		"""
+		基类方法: 给定权重和数值上下限，返回校准后的随机数
+		* if weight>0, positive increment; else negative decline
+		"""
+		_weight = self.logistic(weight) / 100.0 # value in [-1,1] ~ logis(0)=0.5
+		return np.random.uniform(lower+_weight, upper+_weight, 1)[0]
+
+	def get_size(self):
+		return self.__getattribute__("{}_size".format(self._actor))
+    
 
 	def calibrate(self, syntax):
 		"""
@@ -182,6 +199,7 @@ class BaseAgent(object):
 class Producer(BaseAgent):
 	"""
 	这是生产商模块: 支持生成某个特定行业的n个企业
+    需要说明的是，默认的厂商投入 (econ_input) 是和消费量保持一致的变量
 	"""
 	def __init__(self,**kwargs):
 		super(Producer, self).__init__()
@@ -189,9 +207,6 @@ class Producer(BaseAgent):
 		self.producer_size = kwargs.get("size", 1000)
 		self.producer_sector = kwargs.get("sector", "all")  # 所属行业的编码, 字符串
 		self.producers = ["p{}s{}".format(str(index),self.producer_sector) for index in range(self.producer_size)]
-		# 复制 producers 的size
-		self.producer_econ_input = np.zeros(self.producer_size)
-		self.producer_econ_output = np.zeros(self.producer_size)
 		# 根据厂商的数量，生成经济条件，此处约定: 所有的经济参数 -- 也就是要计算经济值的变量，应当以 `econ` 命名:
 		self.producer_econ_capitals = kwargs.get("producer_econ_capitals", np.random.normal(1000,50,self.producer_size))
 		self.producer_econ_costs = kwargs.get("producer_econ_costs", np.random.normal(200,20,self.producer_size))
@@ -200,44 +215,16 @@ class Producer(BaseAgent):
 		self.producer_econ_technologies = kwargs.get("producer_econ_technologies", np.random.normal(10,2,self.producer_size))
 		self.producer_econ_tax_rates = kwargs.get("producer_econ_tax_rates", np.random.random(self.producer_size))
 		self.producer_econ_taxes = kwargs.get("producer_econ_taxes", self.producer_econ_tax_rates * self.producer_econ_sales)
+		self.producer_econ_consumptions = kwargs.get("producer_econ_consumptions", np.random.normal(100,10,self.producer_size))
+		# 复制 producers 的size
+		self.producer_econ_input = self.producer_econ_consumptions
+		self.producer_econ_output = self.producer_econ_sales
 		# 如果有其他的经济变量，批量在此处添加:
 		for key, value in kwargs.items():
 			if key not in dir(self) and key.startswith("producer_econ"):
 				self.__setattr__(key, value)
 		# // end
 		logger.info("[{} Initialise] generate [{}] agents in sector [{}] ".format(self.actor, self.producer_size, self.producer_sector))
-
-
-	def _setting_output(self, producer_output_dispatch:object):
-		"""
-		Set .producer_output, follow the size of .producer_size
-		Parameter: 
-			- producer_output_dispatch: a function, return `.producer_out` dimension array
-		"""
-		# call dispatch function:
-		_dispatch = producer_output_dispatch()
-		if _dispatch.shape == self.producer_econ_output.shape:
-			self.producer_econ_output = _dispatch
-			return True
-		else:
-			logger.error("invalid producer_output_dispatch(), expect a `np.ndarray ({})`, but get ({}) ".format(str(self.producer_econ_output),type(_dispatch)))
-			return False
-
-
-	def _setting_input(self, producer_input_dispath:object):
-		"""
-		Set .producer_input, follow the size of .producer_size
-		Parameter:
-			- producer_input_dispatch: a function, return `.producer_econ_input` dimension array
-		"""
-		_dispatch = producer_input_dispath()
-		if _dispatch.shape == self.producer_econ_input.shape:
-			self.producer_econ_input = _dispatch
-			return True
-		else:
-			logger.error("invalid producer_input_dispath(), expect a `np.ndarray ({})`, but get ({}) ".format(str(self.producer_econ_input),type(_dispatch)))
-			return False
-
 
 	def setting_variables(self, **kwargs):
 		super(Producer, self).setting_variables(**kwargs)
@@ -265,7 +252,8 @@ class Government(BaseAgent):
 		self.government_econ_subsidies = kwargs.get("government_econ_subsidy", np.random.normal(-200, 20, self.government_size)) # subsidy is normally negative value
 		self.government_econ_penalties = kwargs.get("government_econ_subsidy", np.random.normal(200, 20, self.government_size))
 		self.government_econ_penalty_rates = kwargs.get("government_econ_tax_rate", np.random.random())
-		# if any other kwarg:
+		self.government_econ_consumptions = self.government_econ_capitals // 10
+        # if any other kwarg:
 		for key, value in kwargs.items():
 			if key.startswith("government_econ"):
 				pass

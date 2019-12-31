@@ -14,19 +14,20 @@ try: module_path = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
 except: module_path = "/Users/mario/Document/OneDrive/GitHub/"
 sys.path.append(module_path)
 
+from ABMIO.agent import BaseAgent
+
 import logging
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 ########### BaseActivity ###########
-class BaseActivity(object):
+class BaseActivity(BaseAgent):
 	def __init__(self):
 		self._variables = ""
 		self._function = ""
-		self.actor = type(self).__name__
-		self._actor = type(self).__name__.lower()
-		self.scaler = lambda x: x if x>0 else 0	
+		self.agents =  []
+		super(BaseActivity, self).__init__()
 		logger.info("[{} Initialise] activity starts... ".format(self.actor))
 
 	def recipe(self, *args):
@@ -35,6 +36,10 @@ class BaseActivity(object):
 		Parameters:
 			- *args: pipes agents via args
 		"""
+		# reset self._function and self._variables, if new agents piped in:
+		if any([self._variables, self._function]):
+			self._variables = ""; self._function = ""
+
 		if args:
 			self.__setattr__("{}_scale".format(self._actor), len(args))
 			self.__setattr__("{}_agents".format(self._actor), list(args) if not isinstance(args, list) else args)
@@ -45,7 +50,10 @@ class BaseActivity(object):
 		else:
 			logger.error("empty recipe queue, specify *args for agents ")
 			return False
-
+    
+	def sync(self, shelve_object, iteration, label):
+		super(BaseActivity, self).sync(shelve_object, iteration, label)
+		
 
 	def function(self, *args, **kwargs):
 		"""
