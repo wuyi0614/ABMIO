@@ -7,8 +7,10 @@
 import os
 import re
 import sys
-import numpy as np
 import math
+import numpy as np
+import seaborn as sns
+
 try: module_path = os.path.split(os.path.abspath(os.path.dirname(__file__)))[0]
 except: module_path = "/Users/mario/Document/OneDrive/GitHub/"
 sys.path.append(module_path)
@@ -38,12 +40,16 @@ class BaseAgent(object):
         # use (negativ, postivve operator) to aviod `math.OverflowError`
 		self.logistic = lambda x: 1/(1+math.exp(-x)) if x>0 else 1 - 1/(1+math.exp(x))
 
-	def lineplot(self, *args):
+	def lineplot(self, *args, **kwargs):
 		"""
 		基类方法: 绘制折线图 (based on size of agents)
 		Parameters:
 			- *args: variables are to be displayed
+            - **kwargs: axis_x: default as agents
 		"""
+		X = kwargs.get("axis_x", list(range(self.size)))
+		Y = []
+		sns.lineplot(X, Y)
 		pass # //TODO
 
 	def boxplot(self, *args):

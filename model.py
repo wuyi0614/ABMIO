@@ -204,3 +204,29 @@ class IO(BaseModel):
 		return table
 
 
+############ Bidding ############
+class Bidding(BaseModel):
+    """ Bidding model for agents who trade electricities """
+	def __init__(self):
+		super(Bidding, self).__init__()
+		self.__setattr__("{}_econ_prices".format(self._actor), np.random.random())
+
+	def recipe(self, *args):
+		super(Bidding, self).recipe(*args)
+
+
+	def bid(self, function:object):
+		"""
+		Bid function:
+		Parameters:
+			- function: bidding definition
+		"""
+
+        
+        
+        
+        
+        
+        
+
+

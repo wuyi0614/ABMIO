@@ -35,8 +35,6 @@ db['carbon_price_ref_1'] = pd.read_csv(PATH + 'governments_carbon_price_referenc
 db.close()
 """
 
-
-
 #----------------------
 
 import shelve
